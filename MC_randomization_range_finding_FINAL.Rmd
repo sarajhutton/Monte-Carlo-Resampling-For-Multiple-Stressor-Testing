@@ -1,0 +1,161 @@
+---
+title: "MC_rand_range_finding"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+## Reading in dataframes
+
+```{r}
+#import required packages
+require(dplyr)
+library(dplyr)
+
+#set working directory
+df <- read.csv("/Users/sarahutton/Documents/OSU/EPA Silverside Project/Range Finding/range_finding_survival_data.csv")
+
+#filter dataset by chemical
+myclo_df <- filter(df, chemical == "myclobutanil")
+chlor_df <- filter(df, chemical == "chlorpyrifos")
+triad_df <- filter(df, chemical == "triadimefon")
+penconazole_df <- filter(df, chemical == "penconazole")
+dicloran_df <- filter(df, chemical == "dicloran")
+bifen_df <- filter(df, chemical == "bifenthrin")
+paraquat_df <- filter(df, chemical == "paraquat")
+```
+
+Defining function that includes MC randomization for detecting differences in LC50 and LC10 values 
+
+```{r}
+#load required packages
+require(attempt)
+library(attempt)
+require(drc)
+library(drc)
+
+#define function
+range_finding_analysis <- function(chemical_df, LC){
+  m_p2 <- drm(Dead/Total ~ dose.adj, salinity, data = chemical_df, fct = LL.2(), type = "binomial")
+  m <- as.data.frame(ED(m_p2, c(LC)))
+  EDm5 <- m$Estimate[1]  # lc50 for 5ppt
+  EDm15 <- m$Estimate[2]  # lc50 for 15ppt
+  obt.DiffED <- EDm5 - EDm15    # Our obtained ED50 differences
+  obt.DiffED 
+  cat("The obtained value for LC50 differences from the drm test is ",obt.DiffED , "\n") 
+  counter <- 0
+  index <- 0
+  set.seed(1086)
+  nreps <- 5000
+  samp_ED_5 <- numeric(nreps)  # Setting up arrays to hold the results
+  samp_ED_15 <- numeric(nreps)
+  DiffED <- numeric(nreps)
+  
+  for (i in 1:nreps) {
+    tryCatch({
+        #newScore <- sample(chemical_df$Dead)
+      # Have to randomize salinity treatments, not the response data
+        chemical_df.tmp <- chemical_df
+        chemical_df.tmp$salinity <- sample(chemical_df$salinity)
+        newModel <- drm(Dead/Total ~ dose.adj, salinity, data = chemical_df.tmp, fct = LL.2(), type ="binomial", control = drmc(errorm = F))
+        samp_ED_5[i] <- newModel$coefficients[3]   #Sometimes the model creates output called 'coefficients', this happens if it runs correctly 
+        samp_ED_15[i] <- newModel$coefficients[4]
+        DiffED[i] <- samp_ED_5[i] - samp_ED_15[i]
+        if (obt.DiffED > DiffED[i]) 
+          counter = counter + 1
+        }, error=function(e){
+        }, warning=function(w){
+        }
+    )}
+
+
+return(list('DiffED'=DiffED,'obt.DiffED'=obt.DiffED))
+  
+}
+```
+
+
+Calculating the p-values for the differences in LC50 and LC10 values between salinities. The last line of the code outputs a table with all of the values.
+
+```{r}  
+X_triad <-range_finding_analysis(triad_df, 50) #Testing triadimefon LC50
+quantile(X_triad$DiffED,0.975) # this is the cutoff for alpha = 0.05
+p.value_X_triad <- (1-sum(X_triad$obt.DiffED>X_triad$DiffED)/length(X_triad$DiffED))*2 # two-side p-value
+p.value_X_triad
+
+Y_triad<-range_finding_analysis(triad_df, 10) #Testing triadimefon LC10
+quantile(Y_triad$DiffED,0.975) # this is the cutoff for alpha = 0.05
+p.value_Y_triad <- (1-sum(Y_triad$obt.DiffED>Y_triad$DiffED)/length(Y_triad$DiffED))*2 # two-side p-value
+p.value_Y_triad
+
+X_chlor <-range_finding_analysis(chlor_df, 50) #Testing chlorpyrifos LC50
+quantile(X_chlor$DiffED,0.975) # this is the cutoff for alpha = 0.05
+p.value_X_chlor <- (1-sum(X_chlor$obt.DiffED>X_chlor$DiffED)/length(X_chlor$DiffED))*2 # two-side p-value
+p.value_X_chlor
+
+Y_chlor<-range_finding_analysis(chlor_df, 10) #Testing chlorpyrifos LC10
+quantile(Y_chlor$DiffED,0.975) # this is the cutoff for alpha = 0.05
+p.value_Y_chlor <- (1-sum(Y_chlor$obt.DiffED>Y_chlor$DiffED)/length(Y_chlor$DiffED))*2 # two-side p-value
+p.value_Y_chlor
+
+X_myclo <-range_finding_analysis(myclo_df, 50) #Testing myclobutanil LC50
+quantile(X_myclo$DiffED,0.975) # this is the cutoff for alpha = 0.05
+p.value_X_myclo <- (1-sum(X_myclo$obt.DiffED>X_myclo$DiffED)/length(X_myclo$DiffED))*2 # two-side p-value
+p.value_X_myclo
+
+Y_myclo<-range_finding_analysis(myclo_df, 10) #Testing myclobutanil LC10
+quantile(Y_myclo$DiffED,0.975) # this is the cutoff for alpha = 0.05
+p.value_Y_myclo <- (1-sum(abs(Y_myclo$obt.DiffED) > Y_myclo$DiffED ) / length(Y_myclo$DiffED)) * 2 # two-side p-value, take abs value of obt.DiffED due to negative difference
+p.value_Y_myclo 
+
+X_pen <-range_finding_analysis(penconazole_df, 50) #Testing penconazole LC50
+quantile(X_pen$DiffED,0.975) # this is the cutoff for alpha = 0.05
+p.value_X_pen <- (1-sum(X_pen$obt.DiffED>X_pen$DiffED)/length(X_pen$DiffED))*2 # two-side p-value
+p.value_X_pen
+
+Y_pen<-range_finding_analysis(penconazole_df, 10) #Testing penconazole LC10
+quantile(Y_pen$DiffED,0.975) # this is the cutoff for alpha = 0.05
+p.value_Y_pen <- (1-sum(Y_pen$obt.DiffED>Y_pen$DiffED)/length(Y_pen$DiffED))*2 # two-side p-value
+p.value_Y_pen
+
+X_bifen <-range_finding_analysis(bifen_df, 50) #Testing bifenthrin LC50
+quantile(X_bifen$DiffED,0.975) # this is the cutoff for alpha = 0.05
+p.value_X_bifen <- (1-sum(X_bifen$obt.DiffED>X_bifen$DiffED)/length(X_bifen$DiffED))*2 # two-side p-value
+p.value_X_bifen
+
+Y_bifen<-range_finding_analysis(bifen_df, 10) #Testing bifenthrin LC10
+quantile(Y_bifen$DiffED,0.975) # this is the cutoff for alpha = 0.05
+p.value_Y_bifen <- (1-sum(Y_bifen$obt.DiffED>Y_bifen$DiffED)/length(Y_bifen$DiffED))*2 # two-side p-value
+p.value_Y_bifen
+
+X_dicloran <-range_finding_analysis(dicloran_df, 50) #Testing dicloran LC50
+quantile(X_dicloran$DiffED,0.975) # this is the cutoff for alpha = 0.05
+p.value_X_dicloran <- (1-sum(X_dicloran$obt.DiffED>X_dicloran$DiffED)/length(X_dicloran$DiffED))*2 # two-side p-value
+p.value_X_dicloran
+
+sY_dicloran<-range_finding_analysis(dicloran_df, 10) #Testing dicloran LC10
+quantile(Y_dicloran$DiffED,0.975) # this is the cutoff for alpha = 0.05
+p.value_Y_dicloran <- (1-sum(Y_dicloran$obt.DiffED>Y_dicloran$DiffED)/length(Y_dicloran$DiffED))*2 # two-side p-value
+p.value_Y_dicloran
+
+X_paraquat <-range_finding_analysis(paraquat_df, 50) #Testing paraquat LC50
+quantile(X_paraquat$DiffED,0.975) # this is the cutoff for alpha = 0.05
+p.value_X_paraquat <- (1-sum(X_paraquat$obt.DiffED>X_paraquat$DiffED)/length(X_paraquat$DiffED))*2 # two-side p-value
+p.value_X_paraquat
+
+Y_paraquat<-range_finding_analysis(paraquat_df, 10) #Testing paraquat LC10
+quantile(Y_paraquat$DiffED,0.975) # this is the cutoff for alpha = 0.05
+p.value_Y_paraquat <- (1-sum(Y_paraquat$obt.DiffED>Y_paraquat$DiffED)/length(Y_paraquat$DiffED))*2 # two-side p-value
+p.value_Y_paraquat
+
+data.frame("Chemical" = c("Triadimefon", "Myclobutanil", "Chlorpyrifos", "Penconazole", "Dicloran", "Bifentrhin", "Paraquat"), "P Value LC50" = c(p.value_X_triad, p.value_X_myclo, p.value_X_chlor, p.value_X_pen, p.value_X_dicloran, p.value_X_bifen, p.value_X_paraquat), "P Value LC10" = c(p.value_Y_triad, p.value_Y_myclo, p.value_Y_chlor, p.value_Y_pen, p.value_Y_dicloran, p.value_Y_bifen, p.value_Y_paraquat)) #, "X$Obt.diff" = c(X_triad$obt.DiffED, X_myclo$obt.DiffED, X_chlor$obt.DiffED, X_pen$obt.DiffED, X_dicloran$obt.DiffED, X_bifen$obt.DiffED, X_paraquat$obt.DiffED), "Y$Obt.diff" = c(Y_triad$obt.DiffED, Y_myclo$obt.DiffED, Y_chlor$obt.DiffED, Y_pen$obt.DiffED, Y_dicloran$obt.DiffED, Y_bifen$obt.DiffED, Y_paraquat$obt.DiffED))
+
+```
