@@ -1,4 +1,4 @@
-# Monte Carlo Resampling For Multiple Effect Testing
+# Monte Carlo Resampling For Multiple Stressor Testing
 This code was used in analysis of dose response lethality data. Monte Carlo resampling was used to determine if the response between two different treatment types was statistically significant. 
 
 This study was conducted using the estuarine model fish species, Inland silverside (Menidia beryllina), from less than 24 hours post fertilization to four days post hatch (12 days total exposure). We tested the biocides bifenthrin, chlorpyrifos, dicloran, myclobutanil, paraquat, penconcazole, and triadimefon. 
