@@ -21,7 +21,7 @@ require(dplyr)
 library(dplyr)
 
 #set working directory
-df <- read.csv("/Users/sarahutton/Documents/OSU/EPA Silverside Project/Range Finding/range_finding_survival_data.csv")
+df <- read.csv("range_finding_survival_data.csv")
 
 #filter dataset by chemical
 myclo_df <- filter(df, chemical == "myclobutanil")
