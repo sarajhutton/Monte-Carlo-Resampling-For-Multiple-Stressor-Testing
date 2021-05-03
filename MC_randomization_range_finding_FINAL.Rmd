@@ -3,10 +3,6 @@ title: "MC_rand_range_finding"
 output: word_document
 ---
 
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
-```
-
 ## R Markdown
 
 This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
@@ -16,14 +12,16 @@ When you click the **Knit** button a document will be generated that includes bo
 ## Reading in dataframes
 
 ```{r}
-#import required packages
-require(dplyr)
-library(dplyr)
+#load required packages
+require(attempt)
+library(attempt)
+require(drc)
+library(drc)
 
-#set working directory
+#set working directory before importing data
 df <- read.csv("range_finding_survival_data.csv")
 
-#filter dataset by chemical
+#filter dataframe by chemical
 myclo_df <- filter(df, chemical == "myclobutanil")
 chlor_df <- filter(df, chemical == "chlorpyrifos")
 triad_df <- filter(df, chemical == "triadimefon")
@@ -35,16 +33,13 @@ paraquat_df <- filter(df, chemical == "paraquat")
 
 Defining function that includes MC randomization for detecting differences in LC50 and LC10 values 
 
-```{r}
-#load required packages
-require(attempt)
-library(attempt)
-require(drc)
-library(drc)
 
+
+
+```{r}
 #define function
 range_finding_analysis <- function(chemical_df, LC){
-  m_p2 <- drm(Dead/Total ~ dose.adj, salinity, data = chemical_df, fct = LL.2(), type = "binomial")
+  m_p2 <- drm(dead/total ~ dose.adj, salinity, weights = total, data = chemical_df, fct = LL.2(), type = "binomial")
   m <- as.data.frame(ED(m_p2, c(LC)))
   EDm5 <- m$Estimate[1]  # lc50 for 5ppt
   EDm15 <- m$Estimate[2]  # lc50 for 15ppt
@@ -57,7 +52,8 @@ range_finding_analysis <- function(chemical_df, LC){
   nreps <- 5000
   samp_ED_5 <- numeric(nreps)  # Setting up arrays to hold the results
   samp_ED_15 <- numeric(nreps)
-  DiffED <- numeric(nreps)
+  #DiffED <- numeric(nreps)
+  DiffED <- rep(NA,nreps)
   
   for (i in 1:nreps) {
     tryCatch({
@@ -65,7 +61,7 @@ range_finding_analysis <- function(chemical_df, LC){
       # Have to randomize salinity treatments, not the response data
         chemical_df.tmp <- chemical_df
         chemical_df.tmp$salinity <- sample(chemical_df$salinity)
-        newModel <- drm(Dead/Total ~ dose.adj, salinity, data = chemical_df.tmp, fct = LL.2(), type ="binomial", control = drmc(errorm = F))
+        newModel <- drm(dead/total ~ dose.adj, salinity, weights = total, data = chemical_df.tmp, fct = LL.2(), type ="binomial", control = drmc(errorm = F))
         samp_ED_5[i] <- newModel$coefficients[3]   #Sometimes the model creates output called 'coefficients', this happens if it runs correctly 
         samp_ED_15[i] <- newModel$coefficients[4]
         DiffED[i] <- samp_ED_5[i] - samp_ED_15[i]
@@ -74,7 +70,8 @@ range_finding_analysis <- function(chemical_df, LC){
         }, error=function(e){
         }, warning=function(w){
         }
-    )}
+    )
+}
 
 
 return(list('DiffED'=DiffED,'obt.DiffED'=obt.DiffED))
@@ -87,75 +84,322 @@ Calculating the p-values for the differences in LC50 and LC10 values between sal
 
 ```{r}  
 X_triad <-range_finding_analysis(triad_df, 50) #Testing triadimefon LC50
-quantile(X_triad$DiffED,0.975) # this is the cutoff for alpha = 0.05
-p.value_X_triad <- (1-sum(X_triad$obt.DiffED>X_triad$DiffED)/length(X_triad$DiffED))*2 # two-side p-value
+#p.value_X_triad <- (1-sum(X_triad$obt.DiffED>X_triad$DiffED)/length(X_triad$DiffED))*2 # two-side p-value
+p.value_X_triad <- (1-sum((X_triad$obt.DiffED)>(X_triad$DiffED),na.rm=TRUE)/sum(!is.na(X_triad$DiffED)))*2 # two-side p-value
 p.value_X_triad
 
 Y_triad<-range_finding_analysis(triad_df, 10) #Testing triadimefon LC10
-quantile(Y_triad$DiffED,0.975) # this is the cutoff for alpha = 0.05
-p.value_Y_triad <- (1-sum(Y_triad$obt.DiffED>Y_triad$DiffED)/length(Y_triad$DiffED))*2 # two-side p-value
+p.value_Y_triad <- (1-sum((Y_triad$obt.DiffED)>(Y_triad$DiffED),na.rm=TRUE)/sum(!is.na(Y_triad$DiffED)))*2
+#(1-sum(Y_triad$obt.DiffED>Y_triad$DiffED)/length(Y_triad$DiffED))*2 # two-side p-value
 p.value_Y_triad
 
 X_chlor <-range_finding_analysis(chlor_df, 50) #Testing chlorpyrifos LC50
-quantile(X_chlor$DiffED,0.975) # this is the cutoff for alpha = 0.05
-p.value_X_chlor <- (1-sum(X_chlor$obt.DiffED>X_chlor$DiffED)/length(X_chlor$DiffED))*2 # two-side p-value
+p.value_X_chlor <- (1-sum((X_chlor$obt.DiffED)>(X_chlor$DiffED),na.rm=TRUE)/sum(!is.na(X_chlor$DiffED)))*2
+#(1-sum(X_chlor$obt.DiffED>X_chlor$DiffED)/length(X_chlor$DiffED))*2 # two-side p-value
 p.value_X_chlor
 
 Y_chlor<-range_finding_analysis(chlor_df, 10) #Testing chlorpyrifos LC10
-quantile(Y_chlor$DiffED,0.975) # this is the cutoff for alpha = 0.05
-p.value_Y_chlor <- (1-sum(Y_chlor$obt.DiffED>Y_chlor$DiffED)/length(Y_chlor$DiffED))*2 # two-side p-value
+p.value_Y_chlor <- (1-sum((Y_chlor$obt.DiffED)>(Y_chlor$DiffED),na.rm=TRUE)/sum(!is.na(Y_chlor$DiffED)))*2
+#(1-sum(Y_chlor$obt.DiffED>Y_chlor$DiffED)/length(Y_chlor$DiffED))*2 # two-side p-value
 p.value_Y_chlor
 
 X_myclo <-range_finding_analysis(myclo_df, 50) #Testing myclobutanil LC50
-quantile(X_myclo$DiffED,0.975) # this is the cutoff for alpha = 0.05
-p.value_X_myclo <- (1-sum(X_myclo$obt.DiffED>X_myclo$DiffED)/length(X_myclo$DiffED))*2 # two-side p-value
+p.value_X_myclo <- (1-sum((X_myclo$obt.DiffED)>(X_myclo$DiffED),na.rm=TRUE)/sum(!is.na(X_myclo$DiffED)))*2
+#(1-sum(X_myclo$obt.DiffED>X_myclo$DiffED)/length(X_myclo$DiffED))*2 # two-side p-value
 p.value_X_myclo
 
 Y_myclo<-range_finding_analysis(myclo_df, 10) #Testing myclobutanil LC10
-quantile(Y_myclo$DiffED,0.975) # this is the cutoff for alpha = 0.05
-p.value_Y_myclo <- (1-sum(abs(Y_myclo$obt.DiffED) > Y_myclo$DiffED ) / length(Y_myclo$DiffED)) * 2 # two-side p-value, take abs value of obt.DiffED due to negative difference
+p.value_Y_myclo <- (1-sum((Y_myclo$obt.DiffED)>(Y_myclo$DiffED),na.rm=TRUE)/sum(!is.na(Y_myclo$DiffED)))*2
+#(1-sum(abs(Y_myclo$obt.DiffED) > Y_myclo$DiffED ) / length(Y_myclo$DiffED)) * 2 # two-side p-value, take abs value of obt.DiffED due to negative difference
 p.value_Y_myclo 
 
 X_pen <-range_finding_analysis(penconazole_df, 50) #Testing penconazole LC50
-quantile(X_pen$DiffED,0.975) # this is the cutoff for alpha = 0.05
-p.value_X_pen <- (1-sum(X_pen$obt.DiffED>X_pen$DiffED)/length(X_pen$DiffED))*2 # two-side p-value
+p.value_X_pen <- (1-sum((X_pen$obt.DiffED)>(X_pen$DiffED),na.rm=TRUE)/sum(!is.na(X_pen$DiffED)))*2 # two-side p-value
 p.value_X_pen
 
 Y_pen<-range_finding_analysis(penconazole_df, 10) #Testing penconazole LC10
-quantile(Y_pen$DiffED,0.975) # this is the cutoff for alpha = 0.05
-p.value_Y_pen <- (1-sum(Y_pen$obt.DiffED>Y_pen$DiffED)/length(Y_pen$DiffED))*2 # two-side p-value
+p.value_Y_pen <- (1-sum((Y_pen$obt.DiffED)>(Y_pen$DiffED),na.rm=TRUE)/sum(!is.na(Y_pen$DiffED)))*2 
+#(1-sum(Y_pen$obt.DiffED>Y_pen$DiffED)/length(Y_pen$DiffED))*2 # two-side p-value
 p.value_Y_pen
 
 X_bifen <-range_finding_analysis(bifen_df, 50) #Testing bifenthrin LC50
-quantile(X_bifen$DiffED,0.975) # this is the cutoff for alpha = 0.05
-p.value_X_bifen <- (1-sum(X_bifen$obt.DiffED>X_bifen$DiffED)/length(X_bifen$DiffED))*2 # two-side p-value
+p.value_X_bifen <- (1-sum((X_bifen$obt.DiffED)>(X_bifen$DiffED),na.rm=TRUE)/sum(!is.na(X_bifen$DiffED)))*2 
+#(1-sum(X_bifen$obt.DiffED>X_bifen$DiffED)/length(X_bifen$DiffED))*2 # two-side p-value
 p.value_X_bifen
 
 Y_bifen<-range_finding_analysis(bifen_df, 10) #Testing bifenthrin LC10
-quantile(Y_bifen$DiffED,0.975) # this is the cutoff for alpha = 0.05
-p.value_Y_bifen <- (1-sum(Y_bifen$obt.DiffED>Y_bifen$DiffED)/length(Y_bifen$DiffED))*2 # two-side p-value
+p.value_Y_bifen <- (1-sum((Y_bifen$obt.DiffED)>(Y_bifen$DiffED),na.rm=TRUE)/sum(!is.na(Y_bifen$DiffED)))*2
+#(1-sum(Y_bifen$obt.DiffED>Y_bifen$DiffED)/length(Y_bifen$DiffED))*2 # two-side p-value
 p.value_Y_bifen
 
 X_dicloran <-range_finding_analysis(dicloran_df, 50) #Testing dicloran LC50
-quantile(X_dicloran$DiffED,0.975) # this is the cutoff for alpha = 0.05
-p.value_X_dicloran <- (1-sum(X_dicloran$obt.DiffED>X_dicloran$DiffED)/length(X_dicloran$DiffED))*2 # two-side p-value
+#p.value_X_dicloran <- (1-sum(X_dicloran$obt.DiffED>X_dicloran$DiffED)/length(X_dicloran$DiffED))*2 # two-side p-value
+p.value_X_dicloran <- (1-sum(abs(X_dicloran$obt.DiffED)>abs(X_dicloran$DiffED),na.rm=TRUE)/sum(!is.na(X_dicloran$DiffED)))*2 # two-side p-value
 p.value_X_dicloran
 
-sY_dicloran<-range_finding_analysis(dicloran_df, 10) #Testing dicloran LC10
-quantile(Y_dicloran$DiffED,0.975) # this is the cutoff for alpha = 0.05
-p.value_Y_dicloran <- (1-sum(Y_dicloran$obt.DiffED>Y_dicloran$DiffED)/length(Y_dicloran$DiffED))*2 # two-side p-value
+Y_dicloran<-range_finding_analysis(dicloran_df, 10) #Testing dicloran LC10
+p.value_Y_dicloran <- (1-sum(abs(Y_dicloran$obt.DiffED)>abs(Y_dicloran$DiffED),na.rm=TRUE)/sum(!is.na(Y_dicloran$DiffED)))*2
+#(1-sum(Y_dicloran$obt.DiffED>Y_dicloran$DiffED)/length(Y_dicloran$DiffED))*2 # two-side p-value
 p.value_Y_dicloran
 
 X_paraquat <-range_finding_analysis(paraquat_df, 50) #Testing paraquat LC50
-quantile(X_paraquat$DiffED,0.975) # this is the cutoff for alpha = 0.05
-p.value_X_paraquat <- (1-sum(X_paraquat$obt.DiffED>X_paraquat$DiffED)/length(X_paraquat$DiffED))*2 # two-side p-value
+p.value_X_paraquat <- (1-sum(abs(X_paraquat$obt.DiffED)>abs(X_paraquat$DiffED),na.rm=TRUE)/sum(!is.na(X_paraquat$DiffED)))*2
+#(1-sum(X_paraquat$obt.DiffED>X_paraquat$DiffED)/length(X_paraquat$DiffED))*2 # two-side p-value
 p.value_X_paraquat
 
 Y_paraquat<-range_finding_analysis(paraquat_df, 10) #Testing paraquat LC10
-quantile(Y_paraquat$DiffED,0.975) # this is the cutoff for alpha = 0.05
-p.value_Y_paraquat <- (1-sum(Y_paraquat$obt.DiffED>Y_paraquat$DiffED)/length(Y_paraquat$DiffED))*2 # two-side p-value
+p.value_Y_paraquat <- (1-sum(abs(Y_paraquat$obt.DiffED)>abs(Y_paraquat$DiffED),na.rm=TRUE)/sum(!is.na(Y_paraquat$DiffED)))*2
+#(1-sum(Y_paraquat$obt.DiffED>Y_paraquat$DiffED)/length(Y_paraquat$DiffED))*2 # two-side p-value
 p.value_Y_paraquat
 
 data.frame("Chemical" = c("Triadimefon", "Myclobutanil", "Chlorpyrifos", "Penconazole", "Dicloran", "Bifentrhin", "Paraquat"), "P Value LC50" = c(p.value_X_triad, p.value_X_myclo, p.value_X_chlor, p.value_X_pen, p.value_X_dicloran, p.value_X_bifen, p.value_X_paraquat), "P Value LC10" = c(p.value_Y_triad, p.value_Y_myclo, p.value_Y_chlor, p.value_Y_pen, p.value_Y_dicloran, p.value_Y_bifen, p.value_Y_paraquat)) #, "X$Obt.diff" = c(X_triad$obt.DiffED, X_myclo$obt.DiffED, X_chlor$obt.DiffED, X_pen$obt.DiffED, X_dicloran$obt.DiffED, X_bifen$obt.DiffED, X_paraquat$obt.DiffED), "Y$Obt.diff" = c(Y_triad$obt.DiffED, Y_myclo$obt.DiffED, Y_chlor$obt.DiffED, Y_pen$obt.DiffED, Y_dicloran$obt.DiffED, Y_bifen$obt.DiffED, Y_paraquat$obt.DiffED))
 
+```
+
+
+
+
+Compute pseudo R2
+```{r}
+library(drc)
+
+# 2-param logistic model for the  data, with binomial likelihood
+
+#Psuedo R2 Bifenthrin 5PSU
+bif5_m <- drm(dead/total ~ dose.adj, weights=total,data = bifen_df[bifen_df$salinity== '5',], fct = LL.2(), type = "binomial")
+# log likelihood of the fitted model
+bif5_L1 = logLik(bif5_m)[1]
+# The null model is just the log-likelihood of the data
+# if the only predictor is the mean
+bif5_OKrows = bifen_df$salinity=='5'
+bif5_Mean = mean(bifen_df$dead[OKrows]/bifen_df$total[OKrows])
+# log-likelihood of the null model:
+bif5_L0 = sum(log(dbinom(bifen_df$dead[OKrows],bifen_df$total[OKrows],prob=Mean)))
+# Pseudo R2 formula:
+bif5_n = length(filter(bifen_df, salinity == '5')$total) # sample size
+bif5_R2 = 1 - exp(-2/bif5_n * (bif5_L1 - bif5_L0))
+bif5_R2
+
+#Psuedo R2 Bifenthrin 15PSU
+bif15_m <- drm(dead/total ~ dose.adj, weights=total,data = bifen_df[bifen_df$salinity== '15',], fct = LL.2(), type = "binomial")
+# log likelihood of the fitted model
+bif15_L1 = logLik(bif15_m)[1]
+# The null model is just the log-likelihood of the data
+# if the only predictor is the mean
+bif15_OKrows = bifen_df$salinity=='15'
+bif15_Mean = mean(bifen_df$dead[OKrows]/bifen_df$total[OKrows])
+# log-likelihood of the null model:
+bif15_L0 = sum(log(dbinom(bifen_df$dead[OKrows],bifen_df$total[OKrows],prob=Mean)))
+# Pseudo R2 formula:
+bif15_n = length(filter(bifen_df, salinity == '15')$total) # sample size
+bif15_R2 = 1 - exp(-2/bif15_n * (bif15_L1 - bif15_L0))
+bif15_R2
+
+#Psuedo R2 Chlorpyrifos 5PSU
+chlor5_m <- drm(dead/total ~ dose.adj, weights=total,data = chlor_df[chlor_df$salinity== 5,], fct = LL.2(), type = "binomial")
+# log likelihood of the fitted model
+chlor5_L1 = logLik(chlor5_m)[1]
+# The null model is just the log-likelihood of the data
+# if the only predictor is the mean
+chlor5_OKrows = chlor_df$salinity==5
+chlor5_Mean = mean(chlor_df$dead[OKrows]/chlor_df$total[OKrows])
+# log-likelihood of the null model:
+chlor5_L0 = sum(log(dbinom(chlor_df$dead[OKrows],chlor_df$total[OKrows],prob=Mean)))
+# Pseudo R2 formula:
+chlor5_n = length(filter(chlor_df, salinity == 5)$total) # sample size
+chlor5_R2 = 1 - exp(-2/chlor5_n * (chlor5_L1 - chlor5_L0))
+chlor5_R2
+
+#Psuedo R2 Chlorpyrifos 15PSU
+chlor15_m <- drm(dead/total ~ dose.adj, weights=total,data = chlor_df[chlor_df$salinity== '15',], fct = LL.2(), type = "binomial")
+# log likelihood of the fitted model
+chlor15_L1 = logLik(chlor15_m)[1]
+# The null model is just the log-likelihood of the data
+# if the only predictor is the mean
+chlor15_OKrows = chlor_df$salinity=='15'
+chlor15_Mean = mean(chlor_df$dead[OKrows]/chlor_df$total[OKrows])
+# log-likelihood of the null model:
+chlor15_L0 = sum(log(dbinom(chlor_df$dead[OKrows],chlor_df$total[OKrows],prob=Mean)))
+# Pseudo R2 formula:
+chlor15_n = length(filter(chlor_df, salinity == '15')$total) # sample size
+chlor15_R2 = 1 - exp(-2/chlor15_n * (chlor15_L1 - chlor15_L0))
+chlor15_R2
+
+#Psuedo R2 Dicloran 5PSU
+dicloran5_m <- drm(dead/total ~ dose.adj, weights=total,data = dicloran_df[dicloran_df$salinity== 5,], fct = LL.2(), type = "binomial")
+# log likelihood of the fitted model
+dicloran5_L1 = logLik(dicloran5_m)[1]
+# The null model is just the log-likelihood of the data
+# if the only predictor is the mean
+dicloran5_OKrows = dicloran_df$salinity==5
+dicloran5_Mean = mean(dicloran_df$dead[OKrows]/dicloran_df$total[OKrows])
+# log-likelihood of the null model:
+dicloran5_L0 = sum(log(dbinom(dicloran_df$dead[OKrows],dicloran_df$total[OKrows],prob=Mean)))
+# Pseudo R2 formula:
+dicloran5_n = length(filter(dicloran_df, salinity == 5)$total) # sample size
+dicloran5_R2 = 1 - exp(-2/dicloran5_n * (dicloran5_L1 - dicloran5_L0))
+dicloran5_R2
+
+#Psuedo R2 Dicloran 15PSU
+dicloran15_m <- drm(dead/total ~ dose.adj, weights=total,data = dicloran_df[dicloran_df$salinity== '15',], fct = LL.2(), type = "binomial")
+# log likelihood of the fitted model
+dicloran15_L1 = logLik(dicloran15_m)[1]
+# The null model is just the log-likelihood of the data
+# if the only predictor is the mean
+dicloran15_OKrows = dicloran_df$salinity=='15'
+dicloran15_Mean = mean(dicloran_df$dead[OKrows]/dicloran_df$total[OKrows])
+# log-likelihood of the null model:
+dicloran15_L0 = sum(log(dbinom(dicloran_df$dead[OKrows],dicloran_df$total[OKrows],prob=Mean)))
+# Pseudo R2 formula:
+dicloran15_n = length(filter(dicloran_df, salinity == '15')$total) # sample size
+dicloran15_R2 = 1 - exp(-2/dicloran15_n * (dicloran15_L1 - dicloran15_L0))
+dicloran15_R2
+
+#Psuedo R2 myclo 5PSU
+myclo5_m <- drm(dead/total ~ dose.adj, weights=total,data = myclo_df[myclo_df$salinity== 5,], fct = LL.2(), type = "binomial")
+# log likelihood of the fitted model
+myclo5_L1 = logLik(myclo5_m)[1]
+# The null model is just the log-likelihood of the data
+# if the only predictor is the mean
+myclo5_OKrows = myclo_df$salinity==5
+myclo5_Mean = mean(myclo_df$dead[OKrows]/myclo_df$total[OKrows])
+# log-likelihood of the null model:
+myclo5_L0 = sum(log(dbinom(myclo_df$dead[OKrows],myclo_df$total[OKrows],prob=Mean)))
+# Pseudo R2 formula:
+myclo5_n = length(filter(myclo_df, salinity == 5)$total) # sample size
+myclo5_R2 = 1 - exp(-2/myclo5_n * (myclo5_L1 - myclo5_L0))
+myclo5_R2
+
+#Psuedo R2 myclo 15PSU
+myclo15_m <- drm(dead/total ~ dose.adj, weights=total,data = myclo_df[myclo_df$salinity== '15',], fct = LL.2(), type = "binomial")
+# log likelihood of the fitted model
+myclo15_L1 = logLik(myclo15_m)[1]
+# The null model is just the log-likelihood of the data
+# if the only predictor is the mean
+myclo15_OKrows = myclo_df$salinity=='15'
+myclo15_Mean = mean(myclo_df$dead[OKrows]/myclo_df$total[OKrows])
+# log-likelihood of the null model:
+myclo15_L0 = sum(log(dbinom(myclo_df$dead[OKrows],myclo_df$total[OKrows],prob=Mean)))
+# Pseudo R2 formula:
+myclo15_n = length(filter(myclo_df, salinity == '15')$total) # sample size
+myclo15_R2 = 1 - exp(-2/myclo15_n * (myclo15_L1 - myclo15_L0))
+myclo15_R2
+
+
+#Psuedo R2 paraquat 5PSU
+paraquat5_m <- drm(dead/total ~ dose.adj, weights=total,data = paraquat_df[paraquat_df$salinity== 5,], fct = LL.2(), type = "binomial")
+# log likelihood of the fitted model
+paraquat5_L1 = logLik(paraquat5_m)[1]
+# The null model is just the log-likelihood of the data
+# if the only predictor is the mean
+paraquat5_OKrows = paraquat_df$salinity==5
+paraquat5_Mean = mean(paraquat_df$dead[OKrows]/paraquat_df$total[OKrows])
+# log-likelihood of the null model:
+paraquat5_L0 = sum(log(dbinom(paraquat_df$dead[OKrows],paraquat_df$total[OKrows],prob=Mean)))
+# Pseudo R2 formula:
+paraquat5_n = length(filter(paraquat_df, salinity == 5)$total) # sample size
+paraquat5_R2 = 1 - exp(-2/paraquat5_n * (paraquat5_L1 - paraquat5_L0))
+paraquat5_R2
+
+#Psuedo R2 paraquat 15PSU
+paraquat15_m <- drm(dead/total ~ dose.adj, weights=total,data = paraquat_df[paraquat_df$salinity== '15',], fct = LL.2(), type = "binomial")
+# log likelihood of the fitted model
+paraquat15_L1 = logLik(paraquat15_m)[1]
+# The null model is just the log-likelihood of the data
+# if the only predictor is the mean
+paraquat15_OKrows = paraquat_df$salinity=='15'
+paraquat15_Mean = mean(paraquat_df$dead[OKrows]/paraquat_df$total[OKrows])
+# log-likelihood of the null model:
+paraquat15_L0 = sum(log(dbinom(paraquat_df$dead[OKrows],paraquat_df$total[OKrows],prob=Mean)))
+# Pseudo R2 formula:
+paraquat15_n = length(filter(paraquat_df, salinity == '15')$total) # sample size
+paraquat15_R2 = 1 - exp(-2/paraquat15_n * (paraquat15_L1 - paraquat15_L0))
+paraquat15_R2
+
+
+#Psuedo R2 penconazole 5PSU
+penconazole5_m <- drm(dead/total ~ dose.adj, weights=total,data = penconazole_df[penconazole_df$salinity== 5,], fct = LL.2(), type = "binomial")
+# log likelihood of the fitted model
+penconazole5_L1 = logLik(penconazole5_m)[1]
+# The null model is just the log-likelihood of the data
+# if the only predictor is the mean
+penconazole5_OKrows = penconazole_df$salinity==5
+penconazole5_Mean = mean(na.omit(penconazole_df$dead[OKrows])/na.omit(penconazole_df$total[OKrows]))
+# log-likelihood of the null model:
+penconazole5_L0 = sum(log(dbinom(na.omit(penconazole_df$dead[OKrows]),na.omit(penconazole_df$total[OKrows]),prob=Mean)))
+# Pseudo R2 formula:
+penconazole5_n = length(filter(penconazole_df, salinity == 5)$total) # sample size
+penconazole5_R2 = 1 - exp(-2/penconazole5_n * (penconazole5_L1 - penconazole5_L0))
+penconazole5_R2
+
+#Psuedo R2 penconazole 15PSU
+penconazole15_m <- drm(dead/total ~ dose.adj, weights=total,data = penconazole_df[penconazole_df$salinity== '15',], fct = LL.2(), type = "binomial")
+# log likelihood of the fitted model
+penconazole15_L1 = logLik(penconazole15_m)[1]
+# The null model is just the log-likelihood of the data
+# if the only predictor is the mean
+penconazole15_OKrows = penconazole_df$salinity=='15'
+penconazole15_Mean = mean(na.omit(penconazole_df$dead[OKrows])/na.omit(penconazole_df$total[OKrows]))
+# log-likelihood of the null model:
+penconazole15_L0 = sum(log(dbinom(na.omit(penconazole_df$dead[OKrows]),na.omit(penconazole_df$total[OKrows]),prob=Mean)))
+penconazole15_n = length(filter(penconazole_df, salinity == '15')$total) # sample size
+penconazole15_R2 = 1 - exp(-2/penconazole15_n * (penconazole15_L1 - penconazole15_L0))
+penconazole15_R2
+
+#Psuedo R2 triad 5PSU
+triad5_m <- drm(dead/total ~ dose.adj, weights=total,data = triad_df[triad_df$salinity== 5,], fct = LL.2(), type = "binomial")
+# log likelihood of the fitted model
+triad5_L1 = logLik(triad5_m)[1]
+# The null model is just the log-likelihood of the data
+# if the only predictor is the mean
+triad5_OKrows = triad_df$salinity==5
+triad5_Mean = mean(triad_df$dead[OKrows]/triad_df$total[OKrows])
+# log-likelihood of the null model:
+triad5_L0 = sum(log(dbinom(triad_df$dead[OKrows],triad_df$total[OKrows],prob=Mean)))
+# Pseudo R2 formula:
+triad5_n = length(filter(triad_df, salinity == 5)$total) # sample size
+triad5_R2 = 1 - exp(-2/triad5_n * (triad5_L1 - triad5_L0))
+triad5_R2
+
+#Psuedo R2 triad 15PSU
+triad15_m <- drm(dead/total ~ dose.adj, weights=total,data = triad_df[triad_df$salinity== '15',], fct = LL.2(), type = "binomial")
+# log likelihood of the fitted model
+triad15_L1 = logLik(triad15_m)[1]
+# The null model is just the log-likelihood of the data
+# if the only predictor is the mean
+triad15_OKrows = triad_df$salinity=='15'
+triad15_Mean = mean(triad_df$dead[OKrows]/triad_df$total[OKrows])
+# log-likelihood of the null model:
+triad15_L0 = sum(log(dbinom(triad_df$dead[OKrows],triad_df$total[OKrows],prob=Mean)))
+# Pseudo R2 formula:
+triad15_n = length(filter(triad_df, salinity == '15')$total) # sample size
+triad15_R2 = 1 - exp(-2/triad15_n * (triad15_L1 - triad15_L0))
+triad15_R2
+
+data.frame("Chemical" = c("Bifethrin", "Chlorpyrifos", "Myclobutanil", "Dicloran", "Paraquat", "Penconazole",  "Triadimefon"), "5 PSU Pseudo-R2" = c(bif5_R2, chlor5_R2, dicloran5_R2, myclo5_R2, paraquat5_R2, penconazole5_R2, triad5_R2), "15 PSU Pseudo-R2" = c(bif15_R2, chlor15_R2, dicloran15_R2, myclo15_R2, paraquat15_R2, penconazole15_R2, triad15_R2))
+
+
+#example R2
+# 2-param logistic model for the daphnia data, with binomial likelihood
+# for simplicity just use the 48h data
+daphnids.m1 <- drm(no/total~dose, time, weights = total,
+                   data = daphnids[daphnids$time=='48h',], fct = LL.2(), type = "binomial")
+
+# log likelihood of the fitted model
+L1 = logLik(daphnids.m1)[1]
+
+# The null model is just the log-likelihood of the data
+# if the only predictor is the mean
+OKrows = daphnids$time=='48h'
+Mean = mean(daphnids$no[OKrows]/daphnids$total[OKrows])
+
+# log-likelihood of the null model:
+L0 = sum(log(dbinom(daphnids$no[OKrows],daphnids$total[OKrows],prob=Mean)))
+
+
+# Pseudo R2 formula:
+n = length(daphnids$total) # sample size
+
+R2 = 1 - exp(-2/n * (L1 - L0))
+R2
 ```
